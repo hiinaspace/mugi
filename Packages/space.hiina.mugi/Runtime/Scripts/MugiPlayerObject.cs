@@ -5,6 +5,7 @@ using VRC.Udon;
 
 namespace Space.Hiina.Mugi
 {
+    [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class MugiPlayerObject : UdonSharpBehaviour
     {
         void Start() { }
