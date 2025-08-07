@@ -63,7 +63,12 @@ Assets/PackageMakerWindowData.asset*
 .idea
 .vscode
 
+# I dunno whether I should ignore the entire Assets folder or not yet
 [Aa]ssets/SerializedUdonPrograms*
 [Aa]ssets/Scenes
 [Aa]ssets/XR
 [Aa]ssets/UdonSharp
+[Aa]ssets/TextMesh Pro
+[Aa]ssets/*.meta
+
+.claude/settings.local.json
