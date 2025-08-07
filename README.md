@@ -1,12 +1,12 @@
 # MUGI (Mini Udon Game Interface)
 
-> ⚠️ **Work in Progress** - This package is under active development for VRChat Game Jam 2025. APIs and structure may change.
+> **Work in Progress** - This package is under active development for VRChat Game Jam 2025. APIs and structure may change.
 
 MUGI is a framework for creating multiplayer minigames as prefabs in VRChat worlds. It provides lobby management, game lifecycle handling, scoring systems, and player tracking to simplify the development of 5-minute multiplayer VR experiences.
 
 Originally developed for [VRChat Game Jam 2025](https://jam.vrg.party), MUGI is designed to be reusable for games beyond the jam.
 
-## ✨ Features
+## Features
 
 - **Lobby System** - Join/leave, team selection, game master controls
 - **Game Lifecycle** - Automated state management (Lobby → Countdown → Running → Ending)
@@ -15,23 +15,11 @@ Originally developed for [VRChat Game Jam 2025](https://jam.vrg.party), MUGI is 
 - **Prefab-Based** - Games as portable prefabs that can be placed at origin
 - **Callback System** - Hook into game events without modifying core logic
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
-Add to your VRChat world project via VPM:
-```
-https://hiina.github.io/mugi/
-```
-
-Or add to `vpm-manifest.json`:
-```json
-{
-  "dependencies": {
-    "space.hiina.mugi": "^0.1.0"
-  }
-}
-```
+TODO add the weird VCC manifest thing
 
 ### Basic Usage
 
@@ -41,7 +29,7 @@ Or add to `vpm-manifest.json`:
 4. Set up callback UdonBehaviours to respond to game events
 5. Use `MugiController.IncrementScore()` and other methods in your game logic
 
-## 📋 Package Contents
+## Package Contents
 
 ### Core Prefabs
 - **MugiGame** - Main game controller prefab (create variants of this)
@@ -55,13 +43,13 @@ Or add to `vpm-manifest.json`:
 - **MugiScoreboard** - Score and timer display
 - **MugiPlayerObject** - Individual player state
 
-## 🎮 Game Lifecycle
+## Game Lifecycle
 
 *Documentation in progress*
 
 States: Lobby → Countdown → Running → Ending/Aborted → (back to Lobby)
 
-## 🔌 Callback System
+## Callback System
 
 *Documentation in progress*
 
@@ -73,7 +61,7 @@ Available callbacks:
 - `OnMugiPlayerLeave` - Player leaves
 - `OnMugiTimeWarning` - Time running out
 
-## 🌐 Networking & Synchronization  
+## Networking & Synchronization  
 
 *Documentation in progress*
 
@@ -81,7 +69,7 @@ Available callbacks:
 - Score synchronization
 - Late joiner handling
 
-## 📐 Technical Requirements
+## Technical Requirements
 
 - **Space**: Designed for 20m × 20m × 20m game areas
 - **Players**: 2-8 simultaneous players
@@ -89,7 +77,7 @@ Available callbacks:
 - **VRChat SDK**: Worlds 3.8.x+
 - **Unity**: 2022.3+
 
-## 🔧 Development Status
+## Development Status
 
 This package is being actively developed for VRChat Game Jam 2025. Current focus areas:
 
@@ -99,16 +87,3 @@ This package is being actively developed for VRChat Game Jam 2025. Current focus
 - [ ] Example game implementations
 - [ ] Documentation and samples
 
-## 🤝 Contributing
-
-Since this is under active development for the game jam, please reach out before contributing:
-- **Discord**: [VRChat Game Jam 2025 Server](https://jam.vrg.party)
-- **Issues**: Use GitHub issues for bugs and feature requests
-
-## 📜 License
-
-[License TBD - will be specified before jam launch]
-
----
-
-For more information about VRChat Game Jam 2025, visit https://jam.vrg.party
