@@ -1,76 +1,114 @@
-# VPM Package Template
+# MUGI (Mini Udon Game Interface)
 
-Starter for making Packages, including automation for building and publishing them.
+> ⚠️ **Work in Progress** - This package is under active development for VRChat Game Jam 2025. APIs and structure may change.
 
-Once you're all set up, you'll be able to push changes to this repository and have .zip and .unitypackage versions automatically generated, and a listing made which works in the VPM for delivering updates for this package. If you want to make a listing with a variety of packages, check out our [template-package-listing](https://github.com/vrchat-community/template-package-listing) repo.
+MUGI is a framework for creating multiplayer minigames as prefabs in VRChat worlds. It provides lobby management, game lifecycle handling, scoring systems, and player tracking to simplify the development of 5-minute multiplayer VR experiences.
 
-## ▶ Getting Started
+Originally developed for [VRChat Game Jam 2025](https://jam.vrg.party), MUGI is designed to be reusable for games beyond the jam.
 
-* Press [![Use This Template](https://user-images.githubusercontent.com/737888/185467681-e5fdb099-d99f-454b-8d9e-0760e5a6e588.png)](https://github.com/vrchat-community/template-package/generate)
-to start a new GitHub project based on this template.
-  * Choose a fitting repository name and description.
-  * Set the visibility to 'Public'. You can also choose 'Private' and change it later.
-  * You don't need to select 'Include all branches.'
-* Clone this repository locally using Git.
-  * If you're unfamiliar with Git and GitHub, [visit GitHub's documentation](https://docs.github.com/en/get-started/quickstart/git-and-github-learning-resources) to learn more.
-* Add the folder to Unity Hub and open it as a Unity Project.
-* After opening the project, wait while the VPM resolver is downloaded and added to your project.
-  * This gives you access to the VPM Package Maker and Package Resolver tools.
+## ✨ Features
 
-## 🚇 Migrating Assets Package
-Full details at [Converting Assets to a VPM Package](https://vcc.docs.vrchat.com/guides/convert-unitypackage)
+- **Lobby System** - Join/leave, team selection, game master controls
+- **Game Lifecycle** - Automated state management (Lobby → Countdown → Running → Ending)
+- **Scoring & Teams** - Built-in score tracking and team management
+- **VRChat Networking** - Synchronized multiplayer state
+- **Prefab-Based** - Games as portable prefabs that can be placed at origin
+- **Callback System** - Hook into game events without modifying core logic
 
-## ✏️ Working on Your Package
+## 🚀 Quick Start
 
-* Delete the "Packages/com.vrchat.demo-template" directory or reuse it for your own package.
-  * If you reuse the package, don't forget to rename it and add generated meta files to your repository!
-* Update the `.gitignore` file in the "Packages" directory to include your package.
-  * For example, change `!com.vrchat.demo-template` to `!com.username.package-name`.
-  * `.gitignore` files normally *exclude* the contents of your "Packages" directory. This `.gitignore` in this template show how to *include* the demo package. You can easily change this out for your own package name.
-* Open the Unity project and work on your package's files in your favorite code editor.
-* When you're ready, commit and push your changes.
-* Once you've set up the automation as described below, you can easily publish new versions.
+### Installation
 
-## 🤖 Setting up the Automation
+Add to your VRChat world project via VPM:
+```
+https://hiina.github.io/mugi/
+```
 
-Create a repository variable with the name and value described below.
-For details on how to create repository variables, see [Creating Configuration Variables for a Repository](https://docs.github.com/en/actions/learn-github-actions/variables#creating-configuration-variables-for-a-repository).
-Make sure you are creating a **repository variable**, and not a **repository secret**.
+Or add to `vpm-manifest.json`:
+```json
+{
+  "dependencies": {
+    "space.hiina.mugi": "^0.1.0"
+  }
+}
+```
 
-* `PACKAGE_NAME`: the name of your package, like `com.vrchat.demo-template`.
+### Basic Usage
 
-Finally, go to the "Settings" page for your repo, then choose "Pages", and look for the heading "Build and deployment". Change the "Source" dropdown from "Deploy from a branch" to "GitHub Actions".
+1. Create a Prefab Variant of the `MugiGame` prefab
+2. Add your game objects as children
+3. Configure min/max players and teams in the MugiController
+4. Set up callback UdonBehaviours to respond to game events
+5. Use `MugiController.IncrementScore()` and other methods in your game logic
 
-That's it!
-Some other notes:
-* We highly recommend you keep the existing folder structure of this template.
-  * The root of the project should be a Unity project.
-  * Your packages should be in the "Packages" directory.
-  * If you deviate from this folder structure, you'll need to update the paths that assume your package is in the "Packages" directory on lines 24, 38, 41 and 57.
-* If you want to store and generate your web files in a folder other than "Website" in the root, you can change the `listPublicDirectory` item [here in build-listing.yml](.github/workflows/build-listing.yml#L17).
+## 📋 Package Contents
 
-## 🎉 Publishing a Release
+### Core Prefabs
+- **MugiGame** - Main game controller prefab (create variants of this)
+- **MugiLobbyUI** - Default lobby interface
+- **MugiScoreboard** - Score display and timer
+- **MugiPlayerObject** - Per-player tracking object
 
-You can make a release by running the [Build Release](.github/workflows/release.yml) action. The version specified in your `package.json` file will be used to define the version of the release.
+### Scripts
+- **MugiGame (Controller)** - Main game logic and networking
+- **MugiLobbyUI** - Lobby interface controller  
+- **MugiScoreboard** - Score and timer display
+- **MugiPlayerObject** - Individual player state
 
-## 📃 Rebuilding the Listing
+## 🎮 Game Lifecycle
 
-Whenever you make a change to a release - manually publishing it, or manually creating, editing or deleting a release, the [Build Repo Listing](.github/workflows/build-listing.yml) action will make a new index of all the releases available, and publish them as a website hosted fore free on [GitHub Pages](https://pages.github.com/). This listing can be used by the VPM to keep your package up to date, and the generated index page can serve as a simple landing page with info for your package. The URL for your package will be in the format `https://username.github.io/repo-name`.
+*Documentation in progress*
 
-## 🏠 Customizing the Landing Page (Optional)
+States: Lobby → Countdown → Running → Ending/Aborted → (back to Lobby)
 
-The action which rebuilds the listing also publishes a landing page. The source for this page is in `Website/index.html`. The automation system uses [Scriban](https://github.com/scriban/scriban) to fill in the objects like `{{ this }}` with information from the latest release's manifest, so it will stay up-to-date with the name, id and description that you provide there. You are welcome to modify this page however you want - just use the existing `{{ template.objects }}` to fill in that info wherever you like. The entire contents of your "Website" folder are published to your GitHub Page each time.
+## 🔌 Callback System
 
-## 💻 Technical Stuff
+*Documentation in progress*
 
-You are welcome to make your own changes to the automation process to make it fit your needs, and you can create Pull Requests if you have some changes you think we should adopt. Here's some more info on the included automation:
+Available callbacks:
+- `OnMugiCountdown` - Game starting countdown
+- `OnMugiStart` - Game begins
+- `OnMugiEnd` - Game finished
+- `OnMugiPlayerJoin` - Player joins
+- `OnMugiPlayerLeave` - Player leaves
+- `OnMugiTimeWarning` - Time running out
 
-### Build Release Action
-[release.yml](/.github/workflows/release.yml)
+## 🌐 Networking & Synchronization  
 
-This is a composite action combining a variety of existing GitHub Actions and some shell commands to create both a .zip of your Package and a .unitypackage. It creates a release which is named for the `version` in the `package.json` file found in your target Package, and publishes the zip, the unitypackage and the package.json file to this release.
+*Documentation in progress*
 
-### Build Repo Listing
-[build-listing.yml](.github/workflows/build-listing.yml)
+- Game master ownership model
+- Score synchronization
+- Late joiner handling
 
-This is a composite action which builds a vpm-compatible [Repo Listing](https://vcc.docs.vrchat.com/vpm/repos) based on the releases you've created. In order to find all your releases and combine them into a listing, it checks out [another repository](https://github.com/vrchat-community/package-list-action) which has a [Nuke](https://nuke.build/) project which includes the VPM core lib to have access to its types and methods. This project will be expanded to include more functionality in the future - for now, the action just calls its `BuildRepoListing` target.
+## 📐 Technical Requirements
+
+- **Space**: Designed for 20m × 20m × 20m game areas
+- **Players**: 2-8 simultaneous players
+- **Duration**: 5-minute maximum game time
+- **VRChat SDK**: Worlds 3.8.x+
+- **Unity**: 2022.3+
+
+## 🔧 Development Status
+
+This package is being actively developed for VRChat Game Jam 2025. Current focus areas:
+
+- [ ] Core MugiController implementation
+- [ ] UI system completion
+- [ ] Networking synchronization
+- [ ] Example game implementations
+- [ ] Documentation and samples
+
+## 🤝 Contributing
+
+Since this is under active development for the game jam, please reach out before contributing:
+- **Discord**: [VRChat Game Jam 2025 Server](https://jam.vrg.party)
+- **Issues**: Use GitHub issues for bugs and feature requests
+
+## 📜 License
+
+[License TBD - will be specified before jam launch]
+
+---
+
+For more information about VRChat Game Jam 2025, visit https://jam.vrg.party
