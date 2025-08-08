@@ -25,14 +25,9 @@ namespace Space.Hiina.Mugi
 
         [Header("Team Row References (4 max teams)")]
         public GameObject[] teamRows = new GameObject[4];
-        public TextMeshProUGUI[] teamNameTexts = new TextMeshProUGUI[4];
-        public Button[] teamJoinButtons = new Button[4];
 
         [Header("Player Row References (8 max players)")]
         public GameObject[] playerRows = new GameObject[8];
-        public TextMeshProUGUI[] playerNameTexts = new TextMeshProUGUI[8];
-        public Button[] playerJoinButtons = new Button[8];
-        public Button[] playerLeaveButtons = new Button[8];
 
         [Header("In Progress UI")]
         public TextMeshProUGUI gameProgressText;
@@ -41,14 +36,93 @@ namespace Space.Hiina.Mugi
         private bool endGameConfirmation = false;
         private float endGameConfirmationTime = 0f;
         private const float CONFIRMATION_TIMEOUT = 3f;
+        private bool slowUpdateScheduled = false;
+
+        // Cached component references (discovered in Start)
+        private TextMeshProUGUI[] playerNameTexts = new TextMeshProUGUI[8];
+        private Button[] playerJoinButtons = new Button[8];
+        private Button[] playerLeaveButtons = new Button[8];
+        private TextMeshProUGUI[] teamNameTexts = new TextMeshProUGUI[4];
+        private Button[] teamJoinButtons = new Button[4];
 
         void Start()
         {
-            // Start the slow update loop
-            SendCustomEventDelayedSeconds(nameof(SlowUpdate), 0.1f);
+            // Cache component references and log errors if missing
+            CacheComponentReferences();
 
             // Initial UI refresh
             RefreshLobbyUI();
+        }
+
+        private void CacheComponentReferences()
+        {
+            // Cache player row components
+            for (int i = 0; i < playerRows.Length; i++)
+            {
+                if (playerRows[i] != null)
+                {
+                    Transform nameChild = playerRows[i].transform.Find("LobbyPlayerName");
+                    if (nameChild != null)
+                        playerNameTexts[i] = nameChild.GetComponent<TextMeshProUGUI>();
+                    else
+                        Debug.LogError(
+                            $"[MugiLobbyUI] Missing LobbyPlayerName child in playerRows[{i}]"
+                        );
+
+                    Transform joinChild = playerRows[i].transform.Find("LobbyJoinButton");
+                    if (joinChild != null)
+                        playerJoinButtons[i] = joinChild.GetComponent<Button>();
+                    else
+                        Debug.LogError(
+                            $"[MugiLobbyUI] Missing LobbyJoinButton child in playerRows[{i}]"
+                        );
+
+                    Transform leaveChild = playerRows[i].transform.Find("LobbyLeaveButton");
+                    if (leaveChild != null)
+                        playerLeaveButtons[i] = leaveChild.GetComponent<Button>();
+                    else
+                        Debug.LogError(
+                            $"[MugiLobbyUI] Missing LobbyLeaveButton child in playerRows[{i}]"
+                        );
+                }
+            }
+
+            // Cache team row components
+            for (int i = 0; i < teamRows.Length; i++)
+            {
+                if (teamRows[i] != null)
+                {
+                    Transform nameChild = teamRows[i].transform.Find("LobbyTeamName");
+                    if (nameChild != null)
+                        teamNameTexts[i] = nameChild.GetComponent<TextMeshProUGUI>();
+                    else
+                        Debug.LogError(
+                            $"[MugiLobbyUI] Missing LobbyTeamName child in teamRows[{i}]"
+                        );
+
+                    Transform joinChild = teamRows[i].transform.Find("LobbyTeamJoinButton");
+                    if (joinChild != null)
+                        teamJoinButtons[i] = joinChild.GetComponent<Button>();
+                    else
+                        Debug.LogError(
+                            $"[MugiLobbyUI] Missing LobbyTeamJoinButton child in teamRows[{i}]"
+                        );
+                }
+            }
+        }
+
+        void OnEnable()
+        {
+            if (!slowUpdateScheduled)
+            {
+                slowUpdateScheduled = true;
+                SendCustomEventDelayedSeconds(nameof(SlowUpdate), 0.1f);
+            }
+        }
+
+        void OnDisable()
+        {
+            slowUpdateScheduled = false;
         }
 
         // Button listeners are set up statically in Unity scene
@@ -68,8 +142,15 @@ namespace Space.Hiina.Mugi
                 }
             }
 
-            // Schedule next update
-            SendCustomEventDelayedSeconds(nameof(SlowUpdate), 1f);
+            // Schedule next update only if GameObject is still enabled
+            if (gameObject.activeInHierarchy && slowUpdateScheduled)
+            {
+                SendCustomEventDelayedSeconds(nameof(SlowUpdate), 1f);
+            }
+            else
+            {
+                slowUpdateScheduled = false;
+            }
         }
 
         // ========== VRCHAT EVENTS ==========
@@ -383,9 +464,9 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        // ========== BUTTON EVENT HANDLERS ==========
+        // ========== PUBLIC METHODS (for UI Button events) ==========
 
-        private void OnStartGamePressed()
+        public void OnStartGamePressed()
         {
             if (mugiGame != null)
             {
@@ -393,7 +474,7 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        private void OnEndGamePressed()
+        public void OnEndGamePressed()
         {
             if (mugiGame == null)
                 return;
@@ -413,19 +494,7 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        private void OnTeamJoinPressed(int teamIndex)
-        {
-            if (mugiGame != null)
-            {
-                VRCPlayerApi localPlayer = Networking.LocalPlayer;
-                if (localPlayer != null)
-                {
-                    mugiGame.RequestJoinTeam(localPlayer.playerId, teamIndex);
-                }
-            }
-        }
-
-        private void OnPlayerJoinPressed()
+        public void JoinGame()
         {
             if (mugiGame != null)
             {
@@ -437,7 +506,7 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        private void OnPlayerLeavePressed()
+        public void LeaveGame()
         {
             if (mugiGame != null)
             {
@@ -448,8 +517,6 @@ namespace Space.Hiina.Mugi
                 }
             }
         }
-
-        // ========== PUBLIC TEAM JOIN METHODS (for UI Button events) ==========
 
         public void JoinTeam0()
         {
@@ -469,6 +536,18 @@ namespace Space.Hiina.Mugi
         public void JoinTeam3()
         {
             OnTeamJoinPressed(3);
+        }
+
+        private void OnTeamJoinPressed(int teamIndex)
+        {
+            if (mugiGame != null)
+            {
+                VRCPlayerApi localPlayer = Networking.LocalPlayer;
+                if (localPlayer != null)
+                {
+                    mugiGame.RequestJoinTeam(localPlayer.playerId, teamIndex);
+                }
+            }
         }
     }
 }

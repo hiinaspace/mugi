@@ -161,6 +161,50 @@ namespace Space.Hiina.Mugi
             return "Unknown Team";
         }
 
+        public int GetPlayerScore(VRCPlayerApi player)
+        {
+            if (player == null)
+                return 0;
+
+            int playerId = player.playerId;
+            for (int i = 0; i < activePlayers; i++)
+            {
+                if (playerIds[i] == playerId)
+                {
+                    return playerScores[i];
+                }
+            }
+            return 0; // Player not in game
+        }
+
+        public int GetPlayerScore(int playerId)
+        {
+            for (int i = 0; i < activePlayers; i++)
+            {
+                if (playerIds[i] == playerId)
+                {
+                    return playerScores[i];
+                }
+            }
+            return 0; // Player not in game
+        }
+
+        public int GetTeamScore(int teamIndex)
+        {
+            if (teamIndex < 0 || teamIndex >= maxTeams)
+                return 0;
+
+            int totalScore = 0;
+            for (int i = 0; i < activePlayers; i++)
+            {
+                if (playerTeams[i] == teamIndex)
+                {
+                    totalScore += playerScores[i];
+                }
+            }
+            return totalScore;
+        }
+
         // ========== NETWORK EVENTS (called by LobbyUI) ==========
 
         public void RequestJoinGame(int playerId)
