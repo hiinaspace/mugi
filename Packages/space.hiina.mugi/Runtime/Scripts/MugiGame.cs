@@ -2,8 +2,10 @@
 using UdonSharp;
 using UnityEngine;
 using UnityEngine.UI;
+using VRC.SDK3.Data;
 using VRC.SDKBase;
 using VRC.Udon;
+using VRC.Udon.Common.Interfaces;
 
 namespace Space.Hiina.Mugi
 {
@@ -21,28 +23,62 @@ namespace Space.Hiina.Mugi
         public int maxPlayers = 8;
         public bool useTeams = false;
         public int maxTeams = 2;
+        public int[] minPlayersPerTeam = { 1, 1, 1, 1 }; // min players for each team slot
+        public int[] maxPlayersPerTeam = { 4, 4, 4, 4 }; // max players for each team slot
         public string[] teamNames = { "Team 1", "Team 2", "Team 3", "Team 4" };
         public float gameTimeLimit = 300f; // 5 minutes
         public float countdownTime = 3f;
+
+        [Header("Lifecycle GameObjects")]
+        public GameObject[] enableDuringGame; // Objects to enable only during countdown/running
 
         [Header("Runtime State (Read-Only)")]
         [UdonSynced]
         public int gameState = STATE_LOBBY;
 
         [UdonSynced]
-        public float timeRemaining;
+        public float gameStartTime; // Time.time when game started, for resilient timing
+
+        // Computed properties based on gameStartTime
+        public float timeRemaining
+        {
+            get
+            {
+                if (gameState == STATE_COUNTDOWN)
+                {
+                    float elapsed = Time.time - gameStartTime;
+                    return Mathf.Max(0f, countdownTime - elapsed);
+                }
+                else if (gameState == STATE_RUNNING)
+                {
+                    float elapsed = Time.time - gameStartTime;
+                    return Mathf.Max(0f, gameTimeLimit - elapsed);
+                }
+                return gameTimeLimit;
+            }
+        }
 
         [UdonSynced]
         public int activePlayers = 0;
 
-        // Player tracking - using VRCPlayerApi directly causes sync issues, so we'll use player IDs
+        // Player tracking using DataDictionary for O(1) lookups
+        // Note: DataDictionary cannot be directly synced, so we use JSON serialization
         [UdonSynced]
-        public int[] playerIds = new int[8]; // VRCPlayerApi.playerId for each slot
+        private string _playerDataJson = "{}";
 
-        [UdonSynced]
-        public int[] playerTeams = new int[8]; // team assignment for each player slot, -1 = not assigned
+        // Runtime dictionaries (populated from JSON)
+        private DataDictionary playerScoresDict = new DataDictionary(); // playerId -> score
+        private DataDictionary playerTeamsDict = new DataDictionary(); // playerId -> teamIndex
+        private DataList activePlayerIds = new DataList(); // ordered list for iteration
 
-        [UdonSynced]
+        // Legacy arrays for backward compatibility (will be removed later)
+        [System.NonSerialized]
+        public int[] playerIds = new int[8];
+
+        [System.NonSerialized]
+        public int[] playerTeams = new int[8];
+
+        [System.NonSerialized]
         public int[] playerScores = new int[8];
 
         // Callbacks for game events
@@ -54,12 +90,43 @@ namespace Space.Hiina.Mugi
         public UdonBehaviour[] onPlayerLeaveCallbacks;
         public UdonBehaviour[] onTimeWarningCallbacks;
 
+        // Internal state
+        private bool timeWarningTriggered = false;
+        private float lastUpdateTime = 0f;
+
         private VRCPlayerApi[] playerApiCache = new VRCPlayerApi[8]; // Cache for performance
         private bool gameRunning = false;
+        private bool hasLoggedConfigErrors = false;
 
         void Start()
         {
-            // Initialize arrays
+            // Initialize data structures
+            InitializePlayerData();
+
+            // Validate configuration
+            ValidateConfiguration();
+
+            // Take ownership if no one owns this
+            if (!Networking.IsOwner(gameObject))
+            {
+                Networking.SetOwner(Networking.LocalPlayer, gameObject);
+            }
+
+            // Initialize lifecycle objects
+            UpdateLifecycleObjects();
+        }
+
+        private void InitializePlayerData()
+        {
+            // Initialize dictionaries
+            if (playerScoresDict == null)
+                playerScoresDict = new DataDictionary();
+            if (playerTeamsDict == null)
+                playerTeamsDict = new DataDictionary();
+            if (activePlayerIds == null)
+                activePlayerIds = new DataList();
+
+            // Initialize legacy arrays for backward compatibility
             for (int i = 0; i < 8; i++)
             {
                 playerIds[i] = -1;
@@ -67,13 +134,8 @@ namespace Space.Hiina.Mugi
                 playerScores[i] = 0;
             }
 
-            timeRemaining = gameTimeLimit;
-
-            // Take ownership if no one owns this
-            if (!Networking.IsOwner(gameObject))
-            {
-                Networking.SetOwner(Networking.LocalPlayer, gameObject);
-            }
+            // Deserialize player data if we have any
+            DeserializePlayerData();
         }
 
         // ========== PUBLIC API METHODS ==========
@@ -85,17 +147,40 @@ namespace Space.Hiina.Mugi
 
             if (useTeams)
             {
-                // Check that we have players in at least 2 teams
-                bool[] teamsUsed = new bool[maxTeams];
-                int teamsWithPlayers = 0;
+                // Count players per team using DataDictionary
+                int[] teamCounts = new int[maxTeams];
+                DataList playerIds = playerTeamsDict.GetKeys();
 
-                for (int i = 0; i < activePlayers; i++)
+                for (int i = 0; i < playerIds.Count; i++)
                 {
-                    int team = playerTeams[i];
-                    if (team >= 0 && team < maxTeams && !teamsUsed[team])
+                    int playerId = playerIds[i].Int;
+                    if (playerTeamsDict.TryGetValue(playerId, out DataToken teamToken))
                     {
-                        teamsUsed[team] = true;
+                        int team = teamToken.Int;
+                        if (team >= 0 && team < maxTeams)
+                        {
+                            teamCounts[team]++;
+                        }
+                    }
+                }
+
+                // Check if we have at least 2 teams with players
+                int teamsWithPlayers = 0;
+                for (int i = 0; i < maxTeams; i++)
+                {
+                    if (teamCounts[i] > 0)
+                    {
                         teamsWithPlayers++;
+
+                        // Check min/max constraints for this team
+                        int minForTeam = (i < minPlayersPerTeam.Length) ? minPlayersPerTeam[i] : 1;
+                        int maxForTeam =
+                            (i < maxPlayersPerTeam.Length) ? maxPlayersPerTeam[i] : maxPlayers;
+
+                        if (teamCounts[i] < minForTeam || teamCounts[i] > maxForTeam)
+                        {
+                            return false;
+                        }
                     }
                 }
 
@@ -110,16 +195,14 @@ namespace Space.Hiina.Mugi
             VRCPlayerApi[] result = new VRCPlayerApi[activePlayers];
             int resultIndex = 0;
 
-            for (int i = 0; i < activePlayers; i++)
+            for (int i = 0; i < activePlayerIds.Count; i++)
             {
-                if (playerIds[i] != -1)
+                int playerId = activePlayerIds[i].Int;
+                VRCPlayerApi player = VRCPlayerApi.GetPlayerById(playerId);
+                if (player != null && resultIndex < result.Length)
                 {
-                    VRCPlayerApi player = VRCPlayerApi.GetPlayerById(playerIds[i]);
-                    if (player != null)
-                    {
-                        result[resultIndex] = player;
-                        resultIndex++;
-                    }
+                    result[resultIndex] = player;
+                    resultIndex++;
                 }
             }
 
@@ -131,20 +214,18 @@ namespace Space.Hiina.Mugi
             if (player == null)
                 return -1;
 
-            int playerId = player.playerId;
-            for (int i = 0; i < activePlayers; i++)
+            if (playerTeamsDict.TryGetValue(player.playerId, out DataToken teamToken))
             {
-                if (playerIds[i] == playerId)
-                {
-                    return playerTeams[i];
-                }
+                return teamToken.Int;
             }
             return -1; // Player not in game
         }
 
         public bool IsPlayerInGame(VRCPlayerApi player)
         {
-            return GetPlayerTeam(player) >= -1; // -1 means in game but no team, < -1 means not in game
+            if (player == null)
+                return false;
+            return playerTeamsDict.ContainsKey(player.playerId);
         }
 
         public float GetRemainingTime()
@@ -166,25 +247,18 @@ namespace Space.Hiina.Mugi
             if (player == null)
                 return 0;
 
-            int playerId = player.playerId;
-            for (int i = 0; i < activePlayers; i++)
+            if (playerScoresDict.TryGetValue(player.playerId, out DataToken scoreToken))
             {
-                if (playerIds[i] == playerId)
-                {
-                    return playerScores[i];
-                }
+                return scoreToken.Int;
             }
             return 0; // Player not in game
         }
 
         public int GetPlayerScore(int playerId)
         {
-            for (int i = 0; i < activePlayers; i++)
+            if (playerScoresDict.TryGetValue(playerId, out DataToken scoreToken))
             {
-                if (playerIds[i] == playerId)
-                {
-                    return playerScores[i];
-                }
+                return scoreToken.Int;
             }
             return 0; // Player not in game
         }
@@ -195,17 +269,71 @@ namespace Space.Hiina.Mugi
                 return 0;
 
             int totalScore = 0;
-            for (int i = 0; i < activePlayers; i++)
+            DataList playerIds = playerTeamsDict.GetKeys();
+
+            for (int i = 0; i < playerIds.Count; i++)
             {
-                if (playerTeams[i] == teamIndex)
+                int playerId = playerIds[i].Int;
+                if (
+                    playerTeamsDict.TryGetValue(playerId, out DataToken teamToken)
+                    && teamToken.Int == teamIndex
+                )
                 {
-                    totalScore += playerScores[i];
+                    if (playerScoresDict.TryGetValue(playerId, out DataToken scoreToken))
+                    {
+                        totalScore += scoreToken.Int;
+                    }
                 }
             }
             return totalScore;
         }
 
-        // ========== NETWORK EVENTS (called by LobbyUI) ==========
+        // ========== NETWORK EVENTS ==========
+
+        [NetworkCallable]
+        public void NetworkIncrementScore(int playerId, int amount)
+        {
+            // Only master processes score changes
+            if (!Networking.IsOwner(gameObject))
+                return;
+
+            // Validate game state and player
+            if (gameState != STATE_RUNNING)
+                return;
+
+            if (!playerScoresDict.ContainsKey(playerId))
+                return; // Player not in game
+
+            // Update score
+            if (playerScoresDict.TryGetValue(playerId, out DataToken currentScore))
+            {
+                playerScoresDict[playerId] = currentScore.Int + amount;
+                UpdateLegacyArrays();
+                RequestSerialization();
+            }
+        }
+
+        [NetworkCallable]
+        public void NetworkSetScore(int playerId, int value)
+        {
+            // Only master processes score changes
+            if (!Networking.IsOwner(gameObject))
+                return;
+
+            // Validate game state and player
+            if (gameState != STATE_RUNNING)
+                return;
+
+            if (!playerScoresDict.ContainsKey(playerId))
+                return; // Player not in game
+
+            // Set score
+            playerScoresDict[playerId] = value;
+            UpdateLegacyArrays();
+            RequestSerialization();
+        }
+
+        // ========== LOBBY MANAGEMENT (called by LobbyUI) ==========
 
         public void RequestJoinGame(int playerId)
         {
@@ -217,61 +345,60 @@ namespace Space.Hiina.Mugi
                 return;
 
             // Check if player is already in game
-            for (int i = 0; i < activePlayers; i++)
-            {
-                if (playerIds[i] == playerId)
-                    return; // Already in game
-            }
+            if (playerTeamsDict.ContainsKey(playerId))
+                return; // Already in game
 
-            // Add player to first available slot
-            for (int i = 0; i < maxPlayers; i++)
-            {
-                if (playerIds[i] == -1)
-                {
-                    playerIds[i] = playerId;
-                    playerTeams[i] = useTeams ? -1 : 0; // -1 = no team assigned, 0 = FFA
-                    activePlayers++;
-                    RequestSerialization();
+            // Add player to game
+            int teamAssignment = useTeams ? -1 : 0; // -1 = no team assigned, 0 = FFA
+            playerTeamsDict[playerId] = teamAssignment;
+            playerScoresDict[playerId] = 0;
+            activePlayerIds.Add(playerId);
+            activePlayers++;
 
-                    // Trigger callbacks
-                    TriggerCallbacks(onPlayerJoinCallbacks);
-                    return;
-                }
-            }
+            UpdateLegacyArrays();
+            RequestSerialization();
+
+            // Trigger callbacks
+            TriggerCallbacks(onPlayerJoinCallbacks, "OnMugiPlayerJoin");
         }
 
         public void RequestLeaveGame(int playerId)
         {
             if (!Networking.IsOwner(gameObject))
                 return;
-            if (gameState != STATE_LOBBY)
-                return;
 
-            // Find and remove player
-            for (int i = 0; i < maxPlayers; i++)
+            // Allow leaving during any state (handles disconnects during game)
+
+            // Check if player is in game
+            if (!playerTeamsDict.ContainsKey(playerId))
+                return; // Player not in game
+
+            // Remove player from game
+            playerTeamsDict.Remove(playerId);
+            playerScoresDict.Remove(playerId);
+
+            // Remove from active player list
+            for (int i = 0; i < activePlayerIds.Count; i++)
             {
-                if (playerIds[i] == playerId)
+                if (activePlayerIds[i].Int == playerId)
                 {
-                    // Shift players down to remove gaps
-                    for (int j = i; j < maxPlayers - 1; j++)
-                    {
-                        playerIds[j] = playerIds[j + 1];
-                        playerTeams[j] = playerTeams[j + 1];
-                        playerScores[j] = playerScores[j + 1];
-                    }
-
-                    // Clear last slot
-                    playerIds[maxPlayers - 1] = -1;
-                    playerTeams[maxPlayers - 1] = -1;
-                    playerScores[maxPlayers - 1] = 0;
-
-                    activePlayers--;
-                    RequestSerialization();
-
-                    // Trigger callbacks
-                    TriggerCallbacks(onPlayerLeaveCallbacks);
-                    return;
+                    activePlayerIds.RemoveAt(i);
+                    break;
                 }
+            }
+
+            activePlayers = activePlayerIds.Count;
+            UpdateLegacyArrays();
+            RequestSerialization();
+
+            // Trigger callbacks
+            TriggerCallbacks(onPlayerLeaveCallbacks, "OnMugiPlayerLeave");
+
+            // Check if we need to find new master or abort game
+            VRCPlayerApi leavingPlayer = VRCPlayerApi.GetPlayerById(playerId);
+            if (leavingPlayer != null && Networking.IsOwner(leavingPlayer, gameObject))
+            {
+                PromoteNewMaster();
             }
         }
 
@@ -286,29 +413,35 @@ namespace Space.Hiina.Mugi
             if (teamIndex < 0 || teamIndex >= maxTeams)
                 return;
 
-            // Find player and update team
-            for (int i = 0; i < activePlayers; i++)
+            // Check team capacity
+            int teamCount = 0;
+            DataList playerIds = playerTeamsDict.GetKeys();
+            for (int i = 0; i < playerIds.Count; i++)
             {
-                if (playerIds[i] == playerId)
+                if (
+                    playerTeamsDict.TryGetValue(playerIds[i].Int, out DataToken teamToken)
+                    && teamToken.Int == teamIndex
+                )
                 {
-                    playerTeams[i] = teamIndex;
-                    RequestSerialization();
-                    return;
+                    teamCount++;
                 }
             }
 
-            // If player not in game yet, add them
-            RequestJoinGame(playerId);
-            // Try again after they're added
-            for (int i = 0; i < activePlayers; i++)
+            int maxForTeam =
+                (teamIndex < maxPlayersPerTeam.Length) ? maxPlayersPerTeam[teamIndex] : maxPlayers;
+            if (teamCount >= maxForTeam)
+                return; // Team is full
+
+            // Check if player is in game, if not add them first
+            if (!playerTeamsDict.ContainsKey(playerId))
             {
-                if (playerIds[i] == playerId)
-                {
-                    playerTeams[i] = teamIndex;
-                    RequestSerialization();
-                    return;
-                }
+                RequestJoinGame(playerId);
             }
+
+            // Update player's team
+            playerTeamsDict[playerId] = teamIndex;
+            UpdateLegacyArrays();
+            RequestSerialization();
         }
 
         public void StartGame()
@@ -321,117 +454,138 @@ namespace Space.Hiina.Mugi
                 return;
 
             gameState = STATE_COUNTDOWN;
-            timeRemaining = countdownTime;
-            RequestSerialization();
+            gameStartTime = Time.time;
+            timeWarningTriggered = false;
 
-            TriggerCallbacks(onCountdownCallbacks);
-            SendCustomEvent(nameof(CountdownTick));
+            // Reset all scores
+            DataList playerIds = playerScoresDict.GetKeys();
+            for (int i = 0; i < playerIds.Count; i++)
+            {
+                playerScoresDict[playerIds[i].Int] = 0;
+            }
+            UpdateLegacyArrays();
+
+            RequestSerialization();
+            UpdateLifecycleObjects();
+
+            TriggerCallbacks(onCountdownCallbacks, "OnMugiCountdown");
         }
 
-        public void EndGame()
+        public void EndGameEarly()
         {
             if (!Networking.IsOwner(gameObject))
                 return;
             if (gameState != STATE_RUNNING && gameState != STATE_COUNTDOWN)
                 return;
 
+            EndGameInternal();
+        }
+
+        private void EndGameInternal()
+        {
             gameState = STATE_ENDED;
             gameRunning = false;
             RequestSerialization();
+            UpdateLifecycleObjects();
 
-            TriggerCallbacks(onEndCallbacks);
+            TriggerCallbacks(onEndCallbacks, "OnMugiEnd");
 
             // Return to lobby after a delay
             SendCustomEventDelayedSeconds(nameof(ReturnToLobby), 10f);
         }
 
-        // ========== GAME CONTROL METHODS ==========
+        // ========== GAME CONTROL METHODS (for game developers) ==========
 
         public void IncrementScore(int playerId, int amount)
         {
-            if (!Networking.IsOwner(gameObject))
+            // Validate game state and player
+            if (gameState != STATE_RUNNING)
                 return;
 
-            for (int i = 0; i < activePlayers; i++)
-            {
-                if (playerIds[i] == playerId)
-                {
-                    playerScores[i] += amount;
-                    RequestSerialization();
-                    return;
-                }
-            }
+            if (!playerScoresDict.ContainsKey(playerId))
+                return; // Player not in game
+
+            // Send to game master for processing with proper parameters
+            SendCustomNetworkEvent(
+                NetworkEventTarget.Owner,
+                nameof(NetworkIncrementScore),
+                playerId,
+                amount
+            );
         }
 
         public void SetScore(int playerId, int value)
         {
-            if (!Networking.IsOwner(gameObject))
+            // Validate game state and player
+            if (gameState != STATE_RUNNING)
                 return;
 
-            for (int i = 0; i < activePlayers; i++)
-            {
-                if (playerIds[i] == playerId)
-                {
-                    playerScores[i] = value;
-                    RequestSerialization();
-                    return;
-                }
-            }
+            if (!playerScoresDict.ContainsKey(playerId))
+                return; // Player not in game
+
+            // Send to game master for processing with proper parameters
+            SendCustomNetworkEvent(
+                NetworkEventTarget.Owner,
+                nameof(NetworkSetScore),
+                playerId,
+                value
+            );
         }
 
         // ========== INTERNAL METHODS ==========
 
-        public void CountdownTick()
+        void Update()
         {
+            // Only master handles timing
             if (!Networking.IsOwner(gameObject))
                 return;
-            if (gameState != STATE_COUNTDOWN)
+
+            // Throttle updates to once per second
+            if (Time.time - lastUpdateTime < 1f)
                 return;
+            lastUpdateTime = Time.time;
 
-            timeRemaining -= 1f;
-
-            if (timeRemaining <= 0)
-            {
-                // Start the actual game
-                gameState = STATE_RUNNING;
-                timeRemaining = gameTimeLimit;
-                gameRunning = true;
-                RequestSerialization();
-
-                TriggerCallbacks(onStartCallbacks);
-                SendCustomEvent(nameof(GameTick));
-            }
-            else
-            {
-                RequestSerialization();
-                SendCustomEventDelayedSeconds(nameof(CountdownTick), 1f);
-            }
+            CheckGameProgress();
         }
 
-        public void GameTick()
+        private void CheckGameProgress()
         {
-            if (!Networking.IsOwner(gameObject))
-                return;
-            if (gameState != STATE_RUNNING)
-                return;
-
-            timeRemaining -= 1f;
-
-            // Check for time warning (30 seconds left)
-            if (timeRemaining == 30f)
+            if (gameState == STATE_COUNTDOWN)
             {
-                TriggerCallbacks(onTimeWarningCallbacks);
+                if (timeRemaining <= 0)
+                {
+                    // Start the actual game
+                    gameState = STATE_RUNNING;
+                    gameStartTime = Time.time; // Reset timer for game duration
+                    gameRunning = true;
+                    timeWarningTriggered = false;
+                    RequestSerialization();
+                    UpdateLifecycleObjects();
+
+                    TriggerCallbacks(onStartCallbacks, "OnMugiStart");
+                }
             }
+            else if (gameState == STATE_RUNNING)
+            {
+                // Check for time warning (30 seconds left)
+                if (!timeWarningTriggered && timeRemaining <= 30f)
+                {
+                    timeWarningTriggered = true;
+                    TriggerCallbacks(onTimeWarningCallbacks, "OnMugiTimeWarning");
+                }
 
-            if (timeRemaining <= 0)
-            {
-                // Game time expired
-                EndGame();
-            }
-            else
-            {
-                RequestSerialization();
-                SendCustomEventDelayedSeconds(nameof(GameTick), 1f);
+                if (timeRemaining <= 0)
+                {
+                    // Game time expired
+                    EndGameInternal();
+                }
+
+                // Check if we need to abort due to insufficient players
+                if (activePlayers < minPlayers)
+                {
+                    Debug.Log("MugiGame: Aborting game due to insufficient players");
+                    ReturnToLobby(); // Go directly to lobby, not through end state
+                }
             }
         }
 
@@ -441,29 +595,198 @@ namespace Space.Hiina.Mugi
                 return;
 
             gameState = STATE_LOBBY;
-            timeRemaining = gameTimeLimit;
             gameRunning = false;
+            timeWarningTriggered = false;
 
             // Clear scores but keep players
-            for (int i = 0; i < maxPlayers; i++)
+            DataList playerIds = playerScoresDict.GetKeys();
+            for (int i = 0; i < playerIds.Count; i++)
             {
-                playerScores[i] = 0;
+                playerScoresDict[playerIds[i].Int] = 0;
             }
+            UpdateLegacyArrays();
 
             RequestSerialization();
+            UpdateLifecycleObjects();
         }
 
-        private void TriggerCallbacks(UdonBehaviour[] callbacks)
+        private void TriggerCallbacks(UdonBehaviour[] callbacks, string eventName)
         {
-            if (callbacks == null)
+            if (callbacks == null || string.IsNullOrEmpty(eventName))
                 return;
 
             for (int i = 0; i < callbacks.Length; i++)
             {
                 if (callbacks[i] != null)
                 {
-                    callbacks[i].SendCustomEvent("OnMugiCallback");
+                    callbacks[i].SendCustomEvent(eventName);
                 }
+            }
+        }
+
+        private void UpdateLifecycleObjects()
+        {
+            if (enableDuringGame == null)
+                return;
+
+            bool shouldEnable = (gameState == STATE_COUNTDOWN || gameState == STATE_RUNNING);
+
+            for (int i = 0; i < enableDuringGame.Length; i++)
+            {
+                if (enableDuringGame[i] != null)
+                {
+                    enableDuringGame[i].SetActive(shouldEnable);
+                }
+            }
+        }
+
+        private void SerializePlayerData()
+        {
+            if (!Networking.IsOwner(gameObject))
+                return;
+
+            // Create JSON structure for player data
+            DataDictionary playerData = new DataDictionary()
+            {
+                { "scores", playerScoresDict.DeepClone() },
+                { "teams", playerTeamsDict.DeepClone() },
+                { "activeIds", activePlayerIds.DeepClone() },
+            };
+
+            if (VRCJson.TrySerializeToJson(playerData, JsonExportType.Minify, out DataToken result))
+            {
+                _playerDataJson = result.String;
+            }
+            else
+            {
+                Debug.LogError($"[MugiGame] Failed to serialize player data: {result}");
+            }
+        }
+
+        private void DeserializePlayerData()
+        {
+            if (string.IsNullOrEmpty(_playerDataJson) || _playerDataJson == "{}")
+            {
+                // Initialize empty data structures
+                playerScoresDict.Clear();
+                playerTeamsDict.Clear();
+                activePlayerIds.Clear();
+                activePlayers = 0;
+                return;
+            }
+
+            if (VRCJson.TryDeserializeFromJson(_playerDataJson, out DataToken result))
+            {
+                DataDictionary data = result.DataDictionary;
+
+                if (data.TryGetValue("scores", out DataToken scoresToken))
+                    playerScoresDict = scoresToken.DataDictionary;
+                else
+                    playerScoresDict = new DataDictionary();
+
+                if (data.TryGetValue("teams", out DataToken teamsToken))
+                    playerTeamsDict = teamsToken.DataDictionary;
+                else
+                    playerTeamsDict = new DataDictionary();
+
+                if (data.TryGetValue("activeIds", out DataToken idsToken))
+                    activePlayerIds = idsToken.DataList;
+                else
+                    activePlayerIds = new DataList();
+
+                activePlayers = activePlayerIds.Count;
+
+                // Update legacy arrays for backward compatibility
+                UpdateLegacyArrays();
+            }
+            else
+            {
+                Debug.LogError($"[MugiGame] Failed to deserialize player data: {result}");
+                InitializePlayerData();
+            }
+        }
+
+        private void UpdateLegacyArrays()
+        {
+            // Clear legacy arrays
+            for (int i = 0; i < 8; i++)
+            {
+                playerIds[i] = -1;
+                playerTeams[i] = -1;
+                playerScores[i] = 0;
+            }
+
+            // Populate from DataDictionary
+            for (int i = 0; i < activePlayerIds.Count && i < 8; i++)
+            {
+                int playerId = activePlayerIds[i].Int;
+                playerIds[i] = playerId;
+
+                if (playerTeamsDict.TryGetValue(playerId, out DataToken teamToken))
+                    playerTeams[i] = teamToken.Int;
+
+                if (playerScoresDict.TryGetValue(playerId, out DataToken scoreToken))
+                    playerScores[i] = scoreToken.Int;
+            }
+        }
+
+        public override void OnPreSerialization()
+        {
+            SerializePlayerData();
+        }
+
+        public override void OnDeserialization()
+        {
+            DeserializePlayerData();
+        }
+
+        private void ValidateConfiguration()
+        {
+            if (hasLoggedConfigErrors)
+                return;
+
+            hasLoggedConfigErrors = true;
+
+            // Validate team array lengths
+            if (useTeams)
+            {
+                if (maxTeams <= 1)
+                {
+                    Debug.LogError(
+                        "[MugiGame] maxTeams must be > 1 when useTeams is true. Setting maxTeams = 2."
+                    );
+                    maxTeams = 2;
+                }
+
+                if (minPlayersPerTeam.Length < maxTeams)
+                {
+                    Debug.LogError(
+                        $"[MugiGame] minPlayersPerTeam array length ({minPlayersPerTeam.Length}) is less than maxTeams ({maxTeams}). Some teams will use default min of 1."
+                    );
+                }
+
+                if (maxPlayersPerTeam.Length < maxTeams)
+                {
+                    Debug.LogError(
+                        $"[MugiGame] maxPlayersPerTeam array length ({maxPlayersPerTeam.Length}) is less than maxTeams ({maxTeams}). Some teams will use default max of {maxPlayers}."
+                    );
+                }
+
+                if (teamNames.Length < maxTeams)
+                {
+                    Debug.LogError(
+                        $"[MugiGame] teamNames array length ({teamNames.Length}) is less than maxTeams ({maxTeams}). Some teams will show as 'Unknown Team'."
+                    );
+                }
+            }
+
+            // Validate basic constraints
+            if (minPlayers > maxPlayers)
+            {
+                Debug.LogError(
+                    $"[MugiGame] minPlayers ({minPlayers}) cannot be greater than maxPlayers ({maxPlayers}). Setting minPlayers = maxPlayers."
+                );
+                minPlayers = maxPlayers;
             }
         }
 
@@ -480,10 +803,65 @@ namespace Space.Hiina.Mugi
 
         public override void OnOwnershipTransferred(VRCPlayerApi player)
         {
-            // New owner should validate game state
+            // New owner should validate game state and continue timing
             if (Networking.IsOwner(gameObject))
             {
                 Debug.Log($"MugiGame: Ownership transferred to {player.displayName}");
+
+                // Reset timing tracking for new master
+                lastUpdateTime = Time.time;
+
+                // Check if game should continue or abort
+                if (gameState == STATE_RUNNING || gameState == STATE_COUNTDOWN)
+                {
+                    if (activePlayers < minPlayers)
+                    {
+                        Debug.Log("MugiGame: New master aborting game due to insufficient players");
+                        ReturnToLobby();
+                    }
+                }
+            }
+        }
+
+        // Master rotation: find next player by lowest ID
+        private void PromoteNewMaster()
+        {
+            VRCPlayerApi[] allPlayers = new VRCPlayerApi[VRCPlayerApi.GetPlayerCount()];
+            VRCPlayerApi.GetPlayers(allPlayers);
+
+            VRCPlayerApi newMaster = null;
+            int lowestId = int.MaxValue;
+
+            // Find active game player with lowest ID
+            for (int i = 0; i < activePlayerIds.Count; i++)
+            {
+                int playerId = activePlayerIds[i].Int;
+                VRCPlayerApi player = VRCPlayerApi.GetPlayerById(playerId);
+                if (player != null && player.playerId < lowestId)
+                {
+                    lowestId = player.playerId;
+                    newMaster = player;
+                }
+            }
+
+            // If no game players, find any player with lowest ID
+            if (newMaster == null)
+            {
+                for (int i = 0; i < allPlayers.Length; i++)
+                {
+                    VRCPlayerApi player = allPlayers[i];
+                    if (player != null && player.playerId < lowestId)
+                    {
+                        lowestId = player.playerId;
+                        newMaster = player;
+                    }
+                }
+            }
+
+            if (newMaster != null)
+            {
+                Networking.SetOwner(newMaster, gameObject);
+                Debug.Log($"MugiGame: Promoted {newMaster.displayName} to game master");
             }
         }
     }

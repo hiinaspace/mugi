@@ -300,16 +300,42 @@ namespace Space.Hiina.Mugi
 
                 if (showTeam)
                 {
-                    // Update team name
-                    if (teamNameTexts[i] != null)
-                        teamNameTexts[i].text = mugiGame.GetTeamName(i);
+                    // Count current players on this team - optimized lookup
+                    int teamCount = 0;
+                    VRCPlayerApi[] playersInGame = mugiGame.GetPlayersInGame();
+                    for (int j = 0; j < playersInGame.Length; j++)
+                    {
+                        if (
+                            playersInGame[j] != null
+                            && mugiGame.GetPlayerTeam(playersInGame[j]) == i
+                        )
+                        {
+                            teamCount++;
+                        }
+                    }
 
-                    // Update join button - show if local player not on this team
+                    // Get team constraints
+                    int maxForTeam =
+                        (i < mugiGame.maxPlayersPerTeam.Length)
+                            ? mugiGame.maxPlayersPerTeam[i]
+                            : mugiGame.maxPlayers;
+
+                    // Update team name with player count
+                    if (teamNameTexts[i] != null)
+                    {
+                        string teamName = mugiGame.GetTeamName(i);
+                        teamNameTexts[i].text = $"{teamName} ({teamCount}/{maxForTeam})";
+                    }
+
+                    // Update join button - disable if team is full or player already on team
                     if (teamJoinButtons[i] != null)
                     {
                         VRCPlayerApi localPlayer = Networking.LocalPlayer;
                         int localPlayerTeam = mugiGame.GetPlayerTeam(localPlayer);
-                        teamJoinButtons[i].interactable = (localPlayerTeam != i);
+                        bool teamFull = teamCount >= maxForTeam;
+                        bool alreadyOnTeam = (localPlayerTeam == i);
+
+                        teamJoinButtons[i].interactable = !teamFull && !alreadyOnTeam;
                     }
                 }
             }
@@ -482,7 +508,7 @@ namespace Space.Hiina.Mugi
             if (endGameConfirmation)
             {
                 // Second press - actually end the game
-                mugiGame.EndGame();
+                mugiGame.EndGameEarly();
                 endGameConfirmation = false;
                 endGameConfirmationTime = 0f;
             }
