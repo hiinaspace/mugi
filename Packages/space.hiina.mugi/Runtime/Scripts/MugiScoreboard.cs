@@ -39,6 +39,9 @@ namespace Space.Hiina.Mugi
 
             // Initial UI refresh
             RefreshScoreboard();
+
+            // on very first enable, clear the score grid
+            RefreshScoreGrid();
         }
 
         void OnEnable()
@@ -62,7 +65,7 @@ namespace Space.Hiina.Mugi
             {
                 if (teamRows[i] != null)
                 {
-                    Transform rankChild = teamRows[i].transform.Find("ScoreTeamRank");
+                    Transform rankChild = teamRows[i].transform.Find("Rank");
                     if (rankChild != null)
                         teamRankTexts[i] = rankChild.GetComponent<TextMeshProUGUI>();
                     else
@@ -70,7 +73,7 @@ namespace Space.Hiina.Mugi
                             $"[MugiScoreboard] Missing ScoreTeamRank child in teamRows[{i}]"
                         );
 
-                    Transform nameChild = teamRows[i].transform.Find("ScoreTeamName");
+                    Transform nameChild = teamRows[i].transform.Find("Name");
                     if (nameChild != null)
                         teamNameTexts[i] = nameChild.GetComponent<TextMeshProUGUI>();
                     else
@@ -78,7 +81,7 @@ namespace Space.Hiina.Mugi
                             $"[MugiScoreboard] Missing ScoreTeamName child in teamRows[{i}]"
                         );
 
-                    Transform scoreChild = teamRows[i].transform.Find("ScoreTeamScore");
+                    Transform scoreChild = teamRows[i].transform.Find("Score");
                     if (scoreChild != null)
                         teamScoreTexts[i] = scoreChild.GetComponent<TextMeshProUGUI>();
                     else
@@ -93,7 +96,7 @@ namespace Space.Hiina.Mugi
             {
                 if (playerRows[i] != null)
                 {
-                    Transform rankChild = playerRows[i].transform.Find("ScorePlayerRank");
+                    Transform rankChild = playerRows[i].transform.Find("Rank");
                     if (rankChild != null)
                         playerRankTexts[i] = rankChild.GetComponent<TextMeshProUGUI>();
                     else
@@ -101,7 +104,7 @@ namespace Space.Hiina.Mugi
                             $"[MugiScoreboard] Missing ScorePlayerRank child in playerRows[{i}]"
                         );
 
-                    Transform nameChild = playerRows[i].transform.Find("ScorePlayerName");
+                    Transform nameChild = playerRows[i].transform.Find("Name");
                     if (nameChild != null)
                         playerNameTexts[i] = nameChild.GetComponent<TextMeshProUGUI>();
                     else
@@ -109,7 +112,7 @@ namespace Space.Hiina.Mugi
                             $"[MugiScoreboard] Missing ScorePlayerName child in playerRows[{i}]"
                         );
 
-                    Transform scoreChild = playerRows[i].transform.Find("ScorePlayerScore");
+                    Transform scoreChild = playerRows[i].transform.Find("Score");
                     if (scoreChild != null)
                         playerScoreTexts[i] = scoreChild.GetComponent<TextMeshProUGUI>();
                     else

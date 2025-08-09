@@ -201,6 +201,9 @@ namespace Space.Hiina.Mugi
             {
                 RefreshProgressView();
             }
+
+            // Update start/end buttons
+            RefreshControlButtons();
         }
 
         private void RefreshLobbyView()
@@ -212,9 +215,6 @@ namespace Space.Hiina.Mugi
                 int maxPlayers = mugiGame.maxPlayers;
                 lobbyTitle.text = $"Lobby ({playerCount}/{maxPlayers} players)";
             }
-
-            // Update start/end buttons
-            RefreshControlButtons();
 
             if (mugiGame.useTeams)
             {
@@ -258,8 +258,9 @@ namespace Space.Hiina.Mugi
             // Start button: enabled if game master and game is ready and in lobby
             if (lobbyStartButton != null)
             {
-                lobbyStartButton.interactable =
-                    isGameMaster && gameReady && gameState == MugiGame.STATE_LOBBY;
+                lobbyStartButton.gameObject.SetActive(
+                    isGameMaster && gameReady && gameState == MugiGame.STATE_LOBBY
+                );
             }
 
             // End button: enabled if game master and game is countdown/running
@@ -270,7 +271,7 @@ namespace Space.Hiina.Mugi
                     && (
                         gameState == MugiGame.STATE_COUNTDOWN || gameState == MugiGame.STATE_RUNNING
                     );
-                lobbyEndButton.interactable = canEnd;
+                lobbyEndButton.gameObject.SetActive(canEnd);
 
                 if (canEnd && endGameConfirmation)
                 {

@@ -72,3 +72,4 @@ Assets/PackageMakerWindowData.asset*
 [Aa]ssets/*.meta
 
 .claude/settings.local.json
+/ClientSimStorage

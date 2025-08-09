@@ -3,6 +3,7 @@ using UdonSharp;
 using UnityEngine;
 using UnityEngine.UI;
 using VRC.SDK3.Data;
+using VRC.SDK3.UdonNetworkCalling;
 using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
@@ -61,25 +62,23 @@ namespace Space.Hiina.Mugi
         [UdonSynced]
         public int activePlayers = 0;
 
-        // Player tracking using DataDictionary for O(1) lookups
-        // Note: DataDictionary cannot be directly synced, so we use JSON serialization
+        // Player tracking: UdonSynced arrays for network state + DataDictionary for fast lookups
         [UdonSynced]
-        private string _playerDataJson = "{}";
+        public int[] syncedPlayerIds = new int[8]; // VRCPlayerApi.playerId for each slot
 
-        // Runtime dictionaries (populated from JSON)
+        [UdonSynced]
+        public int[] syncedPlayerTeams = new int[8]; // team assignment for each player slot
+
+        [UdonSynced]
+        public int[] syncedPlayerScores = new int[8]; // scores for each player slot
+
+        [UdonSynced]
+        public int syncedActiveCount = 0; // number of active players
+
+        // Runtime dictionaries for O(1) lookups (populated from synced arrays)
         private DataDictionary playerScoresDict = new DataDictionary(); // playerId -> score
         private DataDictionary playerTeamsDict = new DataDictionary(); // playerId -> teamIndex
-        private DataList activePlayerIds = new DataList(); // ordered list for iteration
-
-        // Legacy arrays for backward compatibility (will be removed later)
-        [System.NonSerialized]
-        public int[] playerIds = new int[8];
-
-        [System.NonSerialized]
-        public int[] playerTeams = new int[8];
-
-        [System.NonSerialized]
-        public int[] playerScores = new int[8];
+        private DataList activePlayerIds = new DataList(); // ordered list of playerIds
 
         // Callbacks for game events
         [Header("Event Callbacks")]
@@ -118,6 +117,16 @@ namespace Space.Hiina.Mugi
 
         private void InitializePlayerData()
         {
+            // Initialize synced arrays
+            for (int i = 0; i < 8; i++)
+            {
+                syncedPlayerIds[i] = -1;
+                syncedPlayerTeams[i] = -1;
+                syncedPlayerScores[i] = 0;
+            }
+            syncedActiveCount = 0;
+            activePlayers = 0;
+
             // Initialize dictionaries
             if (playerScoresDict == null)
                 playerScoresDict = new DataDictionary();
@@ -126,16 +135,8 @@ namespace Space.Hiina.Mugi
             if (activePlayerIds == null)
                 activePlayerIds = new DataList();
 
-            // Initialize legacy arrays for backward compatibility
-            for (int i = 0; i < 8; i++)
-            {
-                playerIds[i] = -1;
-                playerTeams[i] = -1;
-                playerScores[i] = 0;
-            }
-
-            // Deserialize player data if we have any
-            DeserializePlayerData();
+            // Populate dictionaries from synced arrays
+            UpdateDictionariesFromSyncedArrays();
         }
 
         // ========== PUBLIC API METHODS ==========
@@ -308,7 +309,7 @@ namespace Space.Hiina.Mugi
             if (playerScoresDict.TryGetValue(playerId, out DataToken currentScore))
             {
                 playerScoresDict[playerId] = currentScore.Int + amount;
-                UpdateLegacyArrays();
+                UpdateSyncedArraysFromDictionaries();
                 RequestSerialization();
             }
         }
@@ -329,13 +330,14 @@ namespace Space.Hiina.Mugi
 
             // Set score
             playerScoresDict[playerId] = value;
-            UpdateLegacyArrays();
+            UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
         }
 
         // ========== LOBBY MANAGEMENT (called by LobbyUI) ==========
 
-        public void RequestJoinGame(int playerId)
+        [NetworkCallable]
+        public void NetworkAddPlayer(int playerId)
         {
             if (!Networking.IsOwner(gameObject))
                 return;
@@ -355,14 +357,22 @@ namespace Space.Hiina.Mugi
             activePlayerIds.Add(playerId);
             activePlayers++;
 
-            UpdateLegacyArrays();
+            UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
+
+            Debug.Log($"MugiGame: Player {playerId} joined the game");
 
             // Trigger callbacks
             TriggerCallbacks(onPlayerJoinCallbacks, "OnMugiPlayerJoin");
         }
 
-        public void RequestLeaveGame(int playerId)
+        public void RequestJoinGame(int playerId)
+        {
+            SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(NetworkAddPlayer), playerId);
+        }
+
+        [NetworkCallable]
+        public void NetworkRemovePlayer(int playerId)
         {
             if (!Networking.IsOwner(gameObject))
                 return;
@@ -388,8 +398,10 @@ namespace Space.Hiina.Mugi
             }
 
             activePlayers = activePlayerIds.Count;
-            UpdateLegacyArrays();
+            UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
+
+            Debug.Log($"MugiGame: Player {playerId} left the game");
 
             // Trigger callbacks
             TriggerCallbacks(onPlayerLeaveCallbacks, "OnMugiPlayerLeave");
@@ -402,7 +414,13 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        public void RequestJoinTeam(int playerId, int teamIndex)
+        public void RequestLeaveGame(int playerId)
+        {
+            SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(NetworkRemovePlayer), playerId);
+        }
+
+        [NetworkCallable]
+        public void NetworkAddPlayerToTeam(int playerId, int teamIndex)
         {
             if (!Networking.IsOwner(gameObject))
                 return;
@@ -435,13 +453,28 @@ namespace Space.Hiina.Mugi
             // Check if player is in game, if not add them first
             if (!playerTeamsDict.ContainsKey(playerId))
             {
-                RequestJoinGame(playerId);
+                NetworkAddPlayer(playerId);
             }
 
             // Update player's team
             playerTeamsDict[playerId] = teamIndex;
-            UpdateLegacyArrays();
+
+            Debug.Log(
+                $"MugiGame: Player {playerId} joined team {teamIndex} ({GetTeamName(teamIndex)})"
+            );
+
+            UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
+        }
+
+        public void RequestJoinTeam(int playerId, int teamIndex)
+        {
+            SendCustomNetworkEvent(
+                NetworkEventTarget.Owner,
+                nameof(NetworkAddPlayerToTeam),
+                playerId,
+                teamIndex
+            );
         }
 
         public void StartGame()
@@ -463,8 +496,8 @@ namespace Space.Hiina.Mugi
             {
                 playerScoresDict[playerIds[i].Int] = 0;
             }
-            UpdateLegacyArrays();
 
+            UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
             UpdateLifecycleObjects();
 
@@ -491,7 +524,7 @@ namespace Space.Hiina.Mugi
             TriggerCallbacks(onEndCallbacks, "OnMugiEnd");
 
             // Return to lobby after a delay
-            SendCustomEventDelayedSeconds(nameof(ReturnToLobby), 10f);
+            SendCustomEventDelayedSeconds(nameof(ReturnToLobby), 3f);
         }
 
         // ========== GAME CONTROL METHODS (for game developers) ==========
@@ -604,8 +637,8 @@ namespace Space.Hiina.Mugi
             {
                 playerScoresDict[playerIds[i].Int] = 0;
             }
-            UpdateLegacyArrays();
 
+            UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
             UpdateLifecycleObjects();
         }
@@ -640,104 +673,66 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        private void SerializePlayerData()
+        private void UpdateSyncedArraysFromDictionaries()
         {
             if (!Networking.IsOwner(gameObject))
                 return;
 
-            // Create JSON structure for player data
-            DataDictionary playerData = new DataDictionary()
-            {
-                { "scores", playerScoresDict.DeepClone() },
-                { "teams", playerTeamsDict.DeepClone() },
-                { "activeIds", activePlayerIds.DeepClone() },
-            };
-
-            if (VRCJson.TrySerializeToJson(playerData, JsonExportType.Minify, out DataToken result))
-            {
-                _playerDataJson = result.String;
-            }
-            else
-            {
-                Debug.LogError($"[MugiGame] Failed to serialize player data: {result}");
-            }
-        }
-
-        private void DeserializePlayerData()
-        {
-            if (string.IsNullOrEmpty(_playerDataJson) || _playerDataJson == "{}")
-            {
-                // Initialize empty data structures
-                playerScoresDict.Clear();
-                playerTeamsDict.Clear();
-                activePlayerIds.Clear();
-                activePlayers = 0;
-                return;
-            }
-
-            if (VRCJson.TryDeserializeFromJson(_playerDataJson, out DataToken result))
-            {
-                DataDictionary data = result.DataDictionary;
-
-                if (data.TryGetValue("scores", out DataToken scoresToken))
-                    playerScoresDict = scoresToken.DataDictionary;
-                else
-                    playerScoresDict = new DataDictionary();
-
-                if (data.TryGetValue("teams", out DataToken teamsToken))
-                    playerTeamsDict = teamsToken.DataDictionary;
-                else
-                    playerTeamsDict = new DataDictionary();
-
-                if (data.TryGetValue("activeIds", out DataToken idsToken))
-                    activePlayerIds = idsToken.DataList;
-                else
-                    activePlayerIds = new DataList();
-
-                activePlayers = activePlayerIds.Count;
-
-                // Update legacy arrays for backward compatibility
-                UpdateLegacyArrays();
-            }
-            else
-            {
-                Debug.LogError($"[MugiGame] Failed to deserialize player data: {result}");
-                InitializePlayerData();
-            }
-        }
-
-        private void UpdateLegacyArrays()
-        {
-            // Clear legacy arrays
+            // Clear synced arrays
             for (int i = 0; i < 8; i++)
             {
-                playerIds[i] = -1;
-                playerTeams[i] = -1;
-                playerScores[i] = 0;
+                syncedPlayerIds[i] = -1;
+                syncedPlayerTeams[i] = -1;
+                syncedPlayerScores[i] = 0;
             }
 
-            // Populate from DataDictionary
+            // Populate synced arrays from dictionaries
             for (int i = 0; i < activePlayerIds.Count && i < 8; i++)
             {
                 int playerId = activePlayerIds[i].Int;
-                playerIds[i] = playerId;
+                syncedPlayerIds[i] = playerId;
 
                 if (playerTeamsDict.TryGetValue(playerId, out DataToken teamToken))
-                    playerTeams[i] = teamToken.Int;
+                    syncedPlayerTeams[i] = teamToken.Int;
 
                 if (playerScoresDict.TryGetValue(playerId, out DataToken scoreToken))
-                    playerScores[i] = scoreToken.Int;
+                    syncedPlayerScores[i] = scoreToken.Int;
             }
+
+            syncedActiveCount = activePlayerIds.Count;
+            activePlayers = syncedActiveCount;
+        }
+
+        private void UpdateDictionariesFromSyncedArrays()
+        {
+            // Clear dictionaries
+            playerScoresDict.Clear();
+            playerTeamsDict.Clear();
+            activePlayerIds.Clear();
+
+            // Populate dictionaries from synced arrays
+            for (int i = 0; i < syncedActiveCount && i < 8; i++)
+            {
+                int playerId = syncedPlayerIds[i];
+                if (playerId != -1)
+                {
+                    activePlayerIds.Add(playerId);
+                    playerTeamsDict[playerId] = syncedPlayerTeams[i];
+                    playerScoresDict[playerId] = syncedPlayerScores[i];
+                }
+            }
+
+            activePlayers = activePlayerIds.Count;
         }
 
         public override void OnPreSerialization()
         {
-            SerializePlayerData();
+            UpdateSyncedArraysFromDictionaries();
         }
 
         public override void OnDeserialization()
         {
-            DeserializePlayerData();
+            UpdateDictionariesFromSyncedArrays();
         }
 
         private void ValidateConfiguration()
