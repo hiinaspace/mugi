@@ -74,6 +74,10 @@ MonoBehaviour:
   gameState: 0
   gameStartTime: 0
   activePlayers: 0
+  syncedPlayerIds: 0000000000000000000000000000000000000000000000000000000000000000
+  syncedPlayerTeams: 0000000000000000000000000000000000000000000000000000000000000000
+  syncedPlayerScores: 0000000000000000000000000000000000000000000000000000000000000000
+  syncedActiveCount: 0
   onCountdownCallbacks: []
   onStartCallbacks: []
   onEndCallbacks: []
@@ -746,6 +750,21 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
         type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.010929457
+      objectReference: {fileID: 0}
+    - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
+        type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.010929457
+      objectReference: {fileID: 0}
+    - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
+        type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.010929457
+      objectReference: {fileID: 0}
+    - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
+        type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
       objectReference: {fileID: 0}
@@ -757,7 +776,7 @@ PrefabInstance:
     - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
         type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 6.26
       objectReference: {fileID: 0}
     - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
         type: 3}
@@ -782,12 +801,12 @@ PrefabInstance:
     - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
         type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 9.18
+      value: 1.21
       objectReference: {fileID: 0}
     - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
         type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 3.12
+      value: 4.01
       objectReference: {fileID: 0}
     - target: {fileID: 3649596167683990244, guid: 27dc8013415aa5746997d1ea6cda3a57,
         type: 3}
@@ -2227,7 +2246,7 @@ PrefabInstance:
     - target: {fileID: 4017365250375590352, guid: 02fc424a40dd88a418e7637efc0a2c53,
         type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 6.54
       objectReference: {fileID: 0}
     - target: {fileID: 4017365250375590352, guid: 02fc424a40dd88a418e7637efc0a2c53,
         type: 3}
@@ -2251,8 +2270,13 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4017365250375590352, guid: 02fc424a40dd88a418e7637efc0a2c53,
         type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -7.22
+      objectReference: {fileID: 0}
+    - target: {fileID: 4017365250375590352, guid: 02fc424a40dd88a418e7637efc0a2c53,
+        type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 3.04
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 4017365250375590352, guid: 02fc424a40dd88a418e7637efc0a2c53,
         type: 3}

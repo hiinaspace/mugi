@@ -1,9 +1,9 @@
 {
   "name": "space.hiina.mugi",
   "displayName": "MUGI (Mini Udon Game Interface)",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "unity": "2022.3",
-  "description": "Framework for making prefab games inside vrchat worlds",
+  "description": "Framework for making prefab games inside vrchat worlds.",
   "vrchatVersion": "2022.1.1",
   "author": {
     "name": "Hiina",
