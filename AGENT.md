@@ -1,8 +1,8 @@
-# AGENT.md - MUGI Framework Development Guide
+# AGENT.md - Mugi Framework Development Guide
 
 ## Project Overview
 
-**MUGI (MiniUdonGameInterface)** is a VRChat Udon framework designed to simplify the creation of 5-minute multiplayer VR minigames for VRChat worlds. This project was created for the VRChat Game Jam 2025 but is designed to be reusable beyond the jam.
+**Mugi (MiniUdonGameInterface)** is a VRChat Udon framework designed to simplify the creation of 5-minute multiplayer VR minigames for VRChat worlds. This project was created for the VRChat Game Jam 2025 but is designed to be reusable beyond the jam.
 
 ### Core Goals
 - Enable creators to build multiplayer VR minigames quickly
@@ -92,7 +92,7 @@ public class MugiController : UdonSharpBehaviour
 }
 ```
 
-## MUGI Framework Architecture
+## Mugi Framework Architecture
 
 ### MugiController API Patterns
 ```csharp
@@ -236,7 +236,7 @@ namespace Space.Hiina.Mugi.Examples
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class ButtonMasherGame : UdonSharpBehaviour
     {
-        [Header("MUGI Integration")]
+        [Header("Mugi Integration")]
         public UdonBehaviour mugiController;
         
         [Header("Game Objects")]
@@ -350,4 +350,4 @@ Packages/space.hiina.mugi/
 
 ---
 
-*Generated for VRChat Game Jam 2025 - MUGI Framework v1.0*
+*Generated for VRChat Game Jam 2025 - Mugi Framework v1.0*

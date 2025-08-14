@@ -1,10 +1,10 @@
-# MUGI (Mini Udon Game Interface)
+# Mugi (Mini Udon Game Interface)
 
 > **Work in Progress** - This package is under active development for VRChat Game Jam 2025. APIs and structure may change.
 
-MUGI is a framework for creating multiplayer minigames as prefabs in VRChat worlds. It provides lobby management, game lifecycle handling, scoring systems, and player tracking to simplify the development of 5-minute multiplayer VR experiences.
+Mugi is a framework for creating multiplayer minigames as prefabs in VRChat worlds. It provides lobby management, game lifecycle handling, scoring systems, and player tracking to simplify the development of 5-minute multiplayer VR experiences.
 
-Originally developed for [VRChat Game Jam 2025](https://jam.vrg.party), MUGI is designed to be reusable for games beyond the jam.
+Originally developed for [VRChat Game Jam 2025](https://jam.vrg.party), Mugi is designed to be reusable for games beyond the jam.
 
 ## Features
 
