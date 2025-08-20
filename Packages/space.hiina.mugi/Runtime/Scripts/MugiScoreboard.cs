@@ -167,9 +167,13 @@ namespace Space.Hiina.Mugi
             // Always update title
             RefreshTitle();
 
-            // Only update score grid during countdown/running states
+            // Update score grid during countdown/running/ended states to propagate final scores
             int gameState = mugiGame.gameState;
-            if (gameState == MugiGame.STATE_COUNTDOWN || gameState == MugiGame.STATE_RUNNING)
+            if (
+                gameState == MugiGame.STATE_COUNTDOWN
+                || gameState == MugiGame.STATE_RUNNING
+                || gameState == MugiGame.STATE_ENDED
+            )
             {
                 RefreshScoreGrid();
             }

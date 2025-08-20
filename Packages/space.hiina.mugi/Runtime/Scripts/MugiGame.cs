@@ -38,7 +38,7 @@ namespace Space.Hiina.Mugi
         public int gameState = STATE_LOBBY;
 
         [UdonSynced]
-        public float gameStartTime; // Time.time when game started, for resilient timing
+        public float gameStartTime; // Server time in seconds when game started, for resilient timing
 
         // Computed properties based on gameStartTime
         public float timeRemaining
@@ -47,12 +47,12 @@ namespace Space.Hiina.Mugi
             {
                 if (gameState == STATE_COUNTDOWN)
                 {
-                    float elapsed = Time.time - gameStartTime;
+                    float elapsed = (float)Networking.GetServerTimeInSeconds() - gameStartTime;
                     return Mathf.Max(0f, countdownTime - elapsed);
                 }
                 else if (gameState == STATE_RUNNING)
                 {
-                    float elapsed = Time.time - gameStartTime;
+                    float elapsed = (float)Networking.GetServerTimeInSeconds() - gameStartTime;
                     return Mathf.Max(0f, gameTimeLimit - elapsed);
                 }
                 return gameTimeLimit;
@@ -104,12 +104,6 @@ namespace Space.Hiina.Mugi
 
             // Validate configuration
             ValidateConfiguration();
-
-            // Take ownership if no one owns this
-            if (!Networking.IsOwner(gameObject))
-            {
-                Networking.SetOwner(Networking.LocalPlayer, gameObject);
-            }
 
             // Initialize lifecycle objects
             UpdateLifecycleObjects();
@@ -350,6 +344,19 @@ namespace Space.Hiina.Mugi
             if (playerTeamsDict.ContainsKey(playerId))
                 return; // Already in game
 
+            // Assign ownership to first player if no owner exists
+            if (!Networking.IsOwner(gameObject))
+            {
+                VRCPlayerApi newPlayer = VRCPlayerApi.GetPlayerById(playerId);
+                if (newPlayer != null)
+                {
+                    Networking.SetOwner(newPlayer, gameObject);
+                    Debug.Log(
+                        $"MugiGame: {newPlayer.displayName} became game master (first player)"
+                    );
+                }
+            }
+
             // Add player to game
             int teamAssignment = useTeams ? -1 : 0; // -1 = no team assigned, 0 = FFA
             playerTeamsDict[playerId] = teamAssignment;
@@ -487,7 +494,7 @@ namespace Space.Hiina.Mugi
                 return;
 
             gameState = STATE_COUNTDOWN;
-            gameStartTime = Time.time;
+            gameStartTime = (float)Networking.GetServerTimeInSeconds();
             timeWarningTriggered = false;
 
             // Reset all scores
@@ -589,7 +596,7 @@ namespace Space.Hiina.Mugi
                 {
                     // Start the actual game
                     gameState = STATE_RUNNING;
-                    gameStartTime = Time.time; // Reset timer for game duration
+                    gameStartTime = (float)Networking.GetServerTimeInSeconds(); // Reset timer for game duration
                     gameRunning = true;
                     timeWarningTriggered = false;
                     RequestSerialization();
@@ -818,16 +825,13 @@ namespace Space.Hiina.Mugi
             }
         }
 
-        // Master rotation: find next player by lowest ID
+        // Master rotation: prioritize active game players, then fallback to any player
         private void PromoteNewMaster()
         {
-            VRCPlayerApi[] allPlayers = new VRCPlayerApi[VRCPlayerApi.GetPlayerCount()];
-            VRCPlayerApi.GetPlayers(allPlayers);
-
             VRCPlayerApi newMaster = null;
             int lowestId = int.MaxValue;
 
-            // Find active game player with lowest ID
+            // First priority: Find active game player with lowest ID
             for (int i = 0; i < activePlayerIds.Count; i++)
             {
                 int playerId = activePlayerIds[i].Int;
@@ -839,9 +843,13 @@ namespace Space.Hiina.Mugi
                 }
             }
 
-            // If no game players, find any player with lowest ID
+            // Second priority: If no game players available, find any player with lowest ID
             if (newMaster == null)
             {
+                VRCPlayerApi[] allPlayers = new VRCPlayerApi[VRCPlayerApi.GetPlayerCount()];
+                VRCPlayerApi.GetPlayers(allPlayers);
+
+                lowestId = int.MaxValue;
                 for (int i = 0; i < allPlayers.Length; i++)
                 {
                     VRCPlayerApi player = allPlayers[i];
@@ -857,6 +865,10 @@ namespace Space.Hiina.Mugi
             {
                 Networking.SetOwner(newMaster, gameObject);
                 Debug.Log($"MugiGame: Promoted {newMaster.displayName} to game master");
+            }
+            else
+            {
+                Debug.LogWarning("MugiGame: No suitable player found for game master promotion");
             }
         }
     }
