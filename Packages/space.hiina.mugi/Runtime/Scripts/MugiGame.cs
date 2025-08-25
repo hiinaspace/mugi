@@ -91,7 +91,8 @@ namespace Space.Hiina.Mugi
 
         // Internal state
         private bool timeWarningTriggered = false;
-        private float lastUpdateTime = 0f;
+        private bool slowUpdateScheduled = false;
+        private int previousGameState = STATE_LOBBY; // Track state changes for client sync
 
         private VRCPlayerApi[] playerApiCache = new VRCPlayerApi[8]; // Cache for performance
         private bool gameRunning = false;
@@ -105,8 +106,26 @@ namespace Space.Hiina.Mugi
             // Validate configuration
             ValidateConfiguration();
 
-            // Initialize lifecycle objects
-            UpdateLifecycleObjects();
+            // Initialize lifecycle objects and callbacks for all clients
+            OnGameStateChanged();
+
+            // Store initial state for change detection
+            previousGameState = gameState;
+        }
+
+        void OnEnable()
+        {
+            // Only master schedules slow updates for game timing
+            if (Networking.IsOwner(gameObject) && !slowUpdateScheduled)
+            {
+                slowUpdateScheduled = true;
+                SendCustomEventDelayedSeconds(nameof(SlowUpdate), 0.1f);
+            }
+        }
+
+        void OnDisable()
+        {
+            slowUpdateScheduled = false;
         }
 
         private void InitializePlayerData()
@@ -506,9 +525,9 @@ namespace Space.Hiina.Mugi
 
             UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
-            UpdateLifecycleObjects();
 
-            TriggerCallbacks(onCountdownCallbacks, "OnMugiCountdown");
+            // Handle client-side effects immediately on master
+            OnGameStateChanged();
         }
 
         public void EndGameEarly()
@@ -526,9 +545,9 @@ namespace Space.Hiina.Mugi
             gameState = STATE_ENDED;
             gameRunning = false;
             RequestSerialization();
-            UpdateLifecycleObjects();
 
-            TriggerCallbacks(onEndCallbacks, "OnMugiEnd");
+            // Handle client-side effects immediately on master
+            OnGameStateChanged();
 
             // Return to lobby after a delay
             SendCustomEventDelayedSeconds(nameof(ReturnToLobby), 3f);
@@ -574,22 +593,28 @@ namespace Space.Hiina.Mugi
 
         // ========== INTERNAL METHODS ==========
 
-        void Update()
+        public void SlowUpdate()
         {
-            // Only master handles timing
-            if (!Networking.IsOwner(gameObject))
-                return;
+            // Only master handles game timing and state transitions
+            if (Networking.IsOwner(gameObject))
+            {
+                CheckGameProgress();
 
-            // Throttle updates to once per second
-            if (Time.time - lastUpdateTime < 1f)
-                return;
-            lastUpdateTime = Time.time;
-
-            CheckGameProgress();
+                // Schedule next update only if GameObject is still enabled and we're the owner
+                if (gameObject.activeInHierarchy && slowUpdateScheduled)
+                {
+                    SendCustomEventDelayedSeconds(nameof(SlowUpdate), 1f);
+                }
+                else
+                {
+                    slowUpdateScheduled = false;
+                }
+            }
         }
 
         private void CheckGameProgress()
         {
+            // Master-only game state transitions and timing logic
             if (gameState == STATE_COUNTDOWN)
             {
                 if (timeRemaining <= 0)
@@ -600,9 +625,9 @@ namespace Space.Hiina.Mugi
                     gameRunning = true;
                     timeWarningTriggered = false;
                     RequestSerialization();
-                    UpdateLifecycleObjects();
 
-                    TriggerCallbacks(onStartCallbacks, "OnMugiStart");
+                    // Handle client-side effects immediately on master
+                    OnGameStateChanged();
                 }
             }
             else if (gameState == STATE_RUNNING)
@@ -629,6 +654,26 @@ namespace Space.Hiina.Mugi
             }
         }
 
+        private void OnGameStateChanged()
+        {
+            // Client-side effects that should run on ALL clients when game state changes
+            UpdateLifecycleObjects();
+
+            // Trigger appropriate callbacks based on current state
+            if (gameState == STATE_COUNTDOWN)
+            {
+                TriggerCallbacks(onCountdownCallbacks, "OnMugiCountdown");
+            }
+            else if (gameState == STATE_RUNNING)
+            {
+                TriggerCallbacks(onStartCallbacks, "OnMugiStart");
+            }
+            else if (gameState == STATE_ENDED)
+            {
+                TriggerCallbacks(onEndCallbacks, "OnMugiEnd");
+            }
+        }
+
         public void ReturnToLobby()
         {
             if (!Networking.IsOwner(gameObject))
@@ -647,7 +692,9 @@ namespace Space.Hiina.Mugi
 
             UpdateSyncedArraysFromDictionaries();
             RequestSerialization();
-            UpdateLifecycleObjects();
+
+            // Handle client-side effects immediately on master
+            OnGameStateChanged();
         }
 
         private void TriggerCallbacks(UdonBehaviour[] callbacks, string eventName)
@@ -740,6 +787,13 @@ namespace Space.Hiina.Mugi
         public override void OnDeserialization()
         {
             UpdateDictionariesFromSyncedArrays();
+
+            // Check if game state changed and trigger client-side effects
+            if (gameState != previousGameState)
+            {
+                previousGameState = gameState;
+                OnGameStateChanged();
+            }
         }
 
         private void ValidateConfiguration()
@@ -810,8 +864,15 @@ namespace Space.Hiina.Mugi
             {
                 Debug.Log($"MugiGame: Ownership transferred to {player.displayName}");
 
-                // Reset timing tracking for new master
-                lastUpdateTime = Time.time;
+                // Start slow updates for new master if game is active
+                if (
+                    (gameState == STATE_RUNNING || gameState == STATE_COUNTDOWN)
+                    && !slowUpdateScheduled
+                )
+                {
+                    slowUpdateScheduled = true;
+                    SendCustomEventDelayedSeconds(nameof(SlowUpdate), 0.1f);
+                }
 
                 // Check if game should continue or abort
                 if (gameState == STATE_RUNNING || gameState == STATE_COUNTDOWN)
@@ -822,6 +883,11 @@ namespace Space.Hiina.Mugi
                         ReturnToLobby();
                     }
                 }
+            }
+            else
+            {
+                // No longer owner, stop slow updates
+                slowUpdateScheduled = false;
             }
         }
 
