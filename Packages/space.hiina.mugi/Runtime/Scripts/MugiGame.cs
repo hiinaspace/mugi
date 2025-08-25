@@ -20,25 +20,53 @@ namespace Space.Hiina.Mugi
         public const int STATE_ENDED = 3;
 
         [Header("Game Configuration")]
+        [Tooltip("Minimum number of players required to start a game (2-8)")]
+        [Range(2, 8)]
         public int minPlayers = 2;
+
+        [Tooltip("Maximum number of players allowed in a game (2-8)")]
+        [Range(2, 8)]
         public int maxPlayers = 8;
+
+        [Tooltip("Enable team-based gameplay instead of free-for-all")]
         public bool useTeams = false;
+
+        [Tooltip("Maximum number of teams when using team mode (2-4)")]
+        [Range(2, 4)]
         public int maxTeams = 2;
-        public int[] minPlayersPerTeam = { 1, 1, 1, 1 }; // min players for each team slot
-        public int[] maxPlayersPerTeam = { 4, 4, 4, 4 }; // max players for each team slot
+
+        [Tooltip(
+            "Minimum players required for each team slot (array length should match maxTeams)"
+        )]
+        public int[] minPlayersPerTeam = { 1, 1, 1, 1 };
+
+        [Tooltip("Maximum players allowed for each team slot (array length should match maxTeams)")]
+        public int[] maxPlayersPerTeam = { 4, 4, 4, 4 };
+
+        [Tooltip("Display names for each team (array length should match maxTeams)")]
         public string[] teamNames = { "Team 1", "Team 2", "Team 3", "Team 4" };
-        public float gameTimeLimit = 300f; // 5 minutes
+
+        [Tooltip("Total game duration in seconds (5-600, default 300 = 5 minutes)")]
+        [Range(5f, 600f)]
+        public float gameTimeLimit = 300f;
+
+        [Tooltip("Countdown duration before game starts in seconds (1-10)")]
+        [Range(1f, 10f)]
         public float countdownTime = 3f;
 
         [Header("Lifecycle GameObjects")]
-        public GameObject[] enableDuringGame; // Objects to enable only during countdown/running
+        [Tooltip(
+            "GameObjects to enable only during countdown and running states (disabled in lobby/ended)"
+        )]
+        public GameObject[] enableDuringGame;
 
-        [Header("Runtime State (Read-Only)")]
+        [HideInInspector]
         [UdonSynced]
         public int gameState = STATE_LOBBY;
 
+        [HideInInspector]
         [UdonSynced]
-        public float gameStartTime; // Server time in seconds when game started, for resilient timing
+        public float gameStartTime;
 
         // Computed properties based on gameStartTime
         public float timeRemaining
@@ -59,34 +87,48 @@ namespace Space.Hiina.Mugi
             }
         }
 
+        [HideInInspector]
         [UdonSynced]
         public int activePlayers = 0;
 
-        // Player tracking: UdonSynced arrays for network state + DataDictionary for fast lookups
+        [HideInInspector]
         [UdonSynced]
-        public int[] syncedPlayerIds = new int[8]; // VRCPlayerApi.playerId for each slot
+        public int[] syncedPlayerIds = new int[8];
 
+        [HideInInspector]
         [UdonSynced]
-        public int[] syncedPlayerTeams = new int[8]; // team assignment for each player slot
+        public int[] syncedPlayerTeams = new int[8];
 
+        [HideInInspector]
         [UdonSynced]
-        public int[] syncedPlayerScores = new int[8]; // scores for each player slot
+        public int[] syncedPlayerScores = new int[8];
 
+        [HideInInspector]
         [UdonSynced]
-        public int syncedActiveCount = 0; // number of active players
+        public int syncedActiveCount = 0;
 
         // Runtime dictionaries for O(1) lookups (populated from synced arrays)
         private DataDictionary playerScoresDict = new DataDictionary(); // playerId -> score
         private DataDictionary playerTeamsDict = new DataDictionary(); // playerId -> teamIndex
         private DataList activePlayerIds = new DataList(); // ordered list of playerIds
 
-        // Callbacks for game events
         [Header("Event Callbacks")]
+        [Tooltip("UdonBehaviours to notify when countdown begins (calls OnMugiCountdown)")]
         public UdonBehaviour[] onCountdownCallbacks;
+
+        [Tooltip("UdonBehaviours to notify when game starts (calls OnMugiStart)")]
         public UdonBehaviour[] onStartCallbacks;
+
+        [Tooltip("UdonBehaviours to notify when game ends (calls OnMugiEnd)")]
         public UdonBehaviour[] onEndCallbacks;
+
+        [Tooltip("UdonBehaviours to notify when a player joins (calls OnMugiPlayerJoin)")]
         public UdonBehaviour[] onPlayerJoinCallbacks;
+
+        [Tooltip("UdonBehaviours to notify when a player leaves (calls OnMugiPlayerLeave)")]
         public UdonBehaviour[] onPlayerLeaveCallbacks;
+
+        [Tooltip("UdonBehaviours to notify at 30 seconds remaining (calls OnMugiTimeWarning)")]
         public UdonBehaviour[] onTimeWarningCallbacks;
 
         // Internal state
