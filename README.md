@@ -6,84 +6,11 @@ Mugi is a framework for creating multiplayer minigames as prefabs in VRChat worl
 
 Originally developed for [VRChat Game Jam 2025](https://jam.vrg.party), Mugi is designed to be reusable for games beyond the jam.
 
-## Features
+See https://jam.vrg.party/guides/tutorial for a tutorial to this package.
 
-- **Lobby System** - Join/leave, team selection, game master controls
-- **Game Lifecycle** - Automated state management (Lobby → Countdown → Running → Ending)
-- **Scoring & Teams** - Built-in score tracking and team management
-- **VRChat Networking** - Synchronized multiplayer state
-- **Prefab-Based** - Games as portable prefabs that can be placed at origin
-- **Callback System** - Hook into game events without modifying core logic
+### Why is the Csharp namespace `Hiinaspace.Mugi` instead of `Space.Hiina.Mugi`?
 
-## Quick Start
+Csharp apparently resolves namespace names before any local names, including parent namespaces. So `Space.Hiina.Mugi` creates a namspace called just `Space` that shadows anything else called `Space`, namely Unity's [`Space` enum](https://docs.unity3d.com/ScriptReference/Space.html). So if you have a namespace called `Space.Hiina.Mugi`, code like `transform.rotate(Vector3.up, Space.World) will break with errors
+about `World` not being found in the `Space` namespace.
 
-### Installation
-
-TODO add the weird VCC manifest thing
-
-### Basic Usage
-
-1. Create a Prefab Variant of the `MugiGame` prefab
-2. Add your game objects as children
-3. Configure min/max players and teams in the MugiController
-4. Set up callback UdonBehaviours to respond to game events
-5. Use `MugiController.IncrementScore()` and other methods in your game logic
-
-## Package Contents
-
-### Core Prefabs
-- **MugiGame** - Main game controller prefab (create variants of this)
-- **MugiLobbyUI** - Default lobby interface
-- **MugiScoreboard** - Score display and timer
-- **MugiPlayerObject** - Per-player tracking object
-
-### Scripts
-- **MugiGame (Controller)** - Main game logic and networking
-- **MugiLobbyUI** - Lobby interface controller  
-- **MugiScoreboard** - Score and timer display
-- **MugiPlayerObject** - Individual player state
-
-## Game Lifecycle
-
-*Documentation in progress*
-
-States: Lobby → Countdown → Running → Ending/Aborted → (back to Lobby)
-
-## Callback System
-
-*Documentation in progress*
-
-Available callbacks:
-- `OnMugiCountdown` - Game starting countdown
-- `OnMugiStart` - Game begins
-- `OnMugiEnd` - Game finished
-- `OnMugiPlayerJoin` - Player joins
-- `OnMugiPlayerLeave` - Player leaves
-- `OnMugiTimeWarning` - Time running out
-
-## Networking & Synchronization  
-
-*Documentation in progress*
-
-- Game master ownership model
-- Score synchronization
-- Late joiner handling
-
-## Technical Requirements
-
-- **Space**: Designed for 20m × 20m × 20m game areas
-- **Players**: 2-8 simultaneous players
-- **Duration**: 5-minute maximum game time
-- **VRChat SDK**: Worlds 3.8.x+
-- **Unity**: 2022.3+
-
-## Development Status
-
-This package is being actively developed for VRChat Game Jam 2025. Current focus areas:
-
-- [ ] Core MugiController implementation
-- [ ] UI system completion
-- [ ] Networking synchronization
-- [ ] Example game implementations
-- [ ] Documentation and samples
-
+`Hiinaspace` is unlikely to collide with anything, so I just use that instead.

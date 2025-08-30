@@ -8,7 +8,7 @@ using VRC.SDKBase;
 using VRC.Udon;
 using VRC.Udon.Common.Interfaces;
 
-namespace Space.Hiina.Mugi
+namespace Hiinaspace.Mugi
 {
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class MugiGame : UdonSharpBehaviour

@@ -1,10 +1,10 @@
-﻿using Space.Hiina.Mugi;
+﻿using Hiinaspace.Mugi;
 using UdonSharp;
 using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
 
-namespace Space.Hiina.Mugi.Examples
+namespace Hiinaspace.Mugi.Examples
 {
     public class PressButton : UdonSharpBehaviour
     {

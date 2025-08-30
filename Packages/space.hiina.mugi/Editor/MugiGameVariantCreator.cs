@@ -2,7 +2,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-namespace Space.Hiina.Mugi.Editor
+namespace Hiinaspace.Mugi.Editor
 {
     /// <summary>
     /// Editor utility for creating MugiGame prefab variants

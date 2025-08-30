@@ -5,7 +5,7 @@ using UnityEngine.UI;
 using VRC.SDKBase;
 using VRC.Udon;
 
-namespace Space.Hiina.Mugi
+namespace Hiinaspace.Mugi
 {
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class MugiLobbyUI : UdonSharpBehaviour

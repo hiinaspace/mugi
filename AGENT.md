@@ -231,7 +231,7 @@ using UnityEngine;
 using VRC.SDKBase;
 using VRC.Udon;
 
-namespace Space.Hiina.Mugi.Examples
+namespace Hiinaspace.Mugi.Examples
 {
     [UdonBehaviourSyncMode(BehaviourSyncMode.Manual)]
     public class ButtonMasherGame : UdonSharpBehaviour
