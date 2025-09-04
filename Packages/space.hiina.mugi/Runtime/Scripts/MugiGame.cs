@@ -405,8 +405,8 @@ namespace Hiinaspace.Mugi
             if (playerTeamsDict.ContainsKey(playerId))
                 return; // Already in game
 
-            // Assign ownership to first player if no owner exists
-            if (!Networking.IsOwner(gameObject))
+            // Assign ownership to first player joining empty lobby
+            if (activePlayers == 0)
             {
                 VRCPlayerApi newPlayer = VRCPlayerApi.GetPlayerById(playerId);
                 if (newPlayer != null)
